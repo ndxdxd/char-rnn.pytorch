@@ -1,4 +1,4 @@
-# https://github.com/spro/char-rnn.pytorch
+
 
 import torch
 import torch.nn as nn

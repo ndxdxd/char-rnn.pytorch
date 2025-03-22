@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# https://github.com/spro/char-rnn.pytorch
-
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -12,6 +9,7 @@ from tqdm import tqdm
 from helpers import *
 from model import *
 from generate import *
+import matplotlib.pyplot as plt
 
 # Parse command line arguments
 argparser = argparse.ArgumentParser()
@@ -28,8 +26,8 @@ argparser.add_argument('--shuffle', action='store_true')
 argparser.add_argument('--cuda', action='store_true')
 args = argparser.parse_args()
 
-if args.cuda:
-    print("Using CUDA")
+device = torch.device("cuda" if args.cuda else "cpu")
+print(f"Using device: {device}")
 
 file, file_len = read_file(args.filename)
 
@@ -37,7 +35,7 @@ def random_training_set(chunk_len, batch_size):
     inp = torch.LongTensor(batch_size, chunk_len)
     target = torch.LongTensor(batch_size, chunk_len)
     for bi in range(batch_size):
-        start_index = random.randint(0, file_len - chunk_len)
+        start_index = random.randint(0, file_len - chunk_len - 1)  # Ensure enough room
         end_index = start_index + chunk_len + 1
         chunk = file[start_index:end_index]
         inp[bi] = char_tensor(chunk[:-1])
@@ -52,7 +50,10 @@ def random_training_set(chunk_len, batch_size):
 def train(inp, target):
     hidden = decoder.init_hidden(args.batch_size)
     if args.cuda:
-        hidden = hidden.cuda()
+        if isinstance(hidden, tuple):  # Check if LSTM
+            hidden = (hidden[0].cuda(), hidden[1].cuda())  # Move both tensors to CUDA
+        else:
+            hidden = hidden.cuda()
     decoder.zero_grad()
     loss = 0
 
@@ -63,7 +64,8 @@ def train(inp, target):
     loss.backward()
     decoder_optimizer.step()
 
-    return loss.data[0] / args.chunk_len
+    return loss.item() / args.chunk_len
+
 
 def save():
     save_filename = os.path.splitext(os.path.basename(args.filename))[0] + '.pt'
@@ -93,6 +95,7 @@ try:
     print("Training for %d epochs..." % args.n_epochs)
     for epoch in tqdm(range(1, args.n_epochs + 1)):
         loss = train(*random_training_set(args.chunk_len, args.batch_size))
+        all_losses.append(loss) 
         loss_avg += loss
 
         if epoch % args.print_every == 0:
@@ -105,4 +108,13 @@ try:
 except KeyboardInterrupt:
     print("Saving before quit...")
     save()
-
+    
+# Plot training loss after completion
+plt.figure(figsize=(10, 5))
+plt.plot(range(1, len(all_losses) + 1), all_losses, label="Training Loss", color="blue")
+plt.xlabel("Iterations")
+plt.ylabel("Loss")
+plt.title("Training Loss Over Iterations")
+plt.legend()
+plt.savefig(f"./graphs/{args.filename}_training_loss_{args.n_epochs}.png")  # Save the plot as an image file
+plt.close()  # Close the plot to free memory

@@ -1,4 +1,3 @@
-# https://github.com/spro/char-rnn.pytorch
 
 import unidecode
 import string
